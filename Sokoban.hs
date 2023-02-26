@@ -6,7 +6,7 @@ import Data.Map
 
 import Game
 
-data Tile = Floor | Wall | Boulder | Hole deriving (Show, Eq)
+data Tile = Floor | Wall | Boulder | Hole | Exit deriving (Show, Eq)
 
 data Location = Location
     { getX :: Int
@@ -16,7 +16,8 @@ type GameMap = Map Location Tile
 
 data Direction = Up | Down | Left | Right deriving (Show, Eq)
 
-data GameState = GameState Location GameMap deriving (Eq)
+data GameState = Level Location GameMap
+                 | Win deriving (Eq)
 
 
 sokoban :: Game Direction GameState
@@ -39,10 +40,11 @@ parseTile '.' = Floor
 parseTile '#' = Wall
 parseTile '0' = Boulder
 parseTile '^' = Hole
+parseTile '>' = Exit
           
 
 parseGameStateFromTiles :: [[Tile]] -> Location -> GameState
-parseGameStateFromTiles tileRows playerPosition = GameState playerPosition (mapFromTileRows tileRows)
+parseGameStateFromTiles tileRows playerPosition = Level playerPosition (mapFromTileRows tileRows)
 
 
 mapFromTileRows :: [[Tile]] -> GameMap
@@ -62,7 +64,7 @@ initialState = parseGameState $ unlines
     , "##.0......0..##"
     , "##..###.###0.##"
     , "###########.###"
-    , "##..^^^.#.....#"
+    , "##..^^^>#.....#"
     , "##..#####0....#"
     , "###^#####.0...#"
     , "###^#####.0...#"
@@ -75,16 +77,17 @@ initialState = parseGameState $ unlines
 ---------------------------------------------------------------
 -- DRAWING
 instance Show GameState where
-    show state@(GameState _ map) = intercalate "\n" [ printRow y state | y <- reverse [0..getY tR] ]
+    show state@(Level _ map) = intercalate "\n" [ printRow y state | y <- reverse [0..getY tR] ]
         where tR = topRightCorner map
+    show Win = "You win!"
 
 
 printRow :: Int -> GameState -> String
-printRow y state@(GameState _ map) = [printLocation Location{getX=x, getY=y} state | x <- [0..getX $ topRightCorner map]]
+printRow y state@(Level _ map) = [printLocation Location{getX=x, getY=y} state | x <- [0..getX $ topRightCorner map]]
 
 
 printLocation :: Location -> GameState -> Char
-printLocation location (GameState playerLocation map) = if location == playerLocation then '@' else printTile (getTile location map)
+printLocation location (Level playerLocation map) = if location == playerLocation then '@' else printTile (getTile location map)
 
 
 printTile :: Tile -> Char
@@ -92,6 +95,7 @@ printTile Floor = '.'
 printTile Wall = '#'
 printTile Boulder = '0'
 printTile Hole = '^'
+printTile Exit = '>'
 
 
 topRightCorner :: GameMap -> Location
@@ -116,9 +120,10 @@ getTile location = fromMaybe Wall . lookup location
 
 
 move :: Maybe Direction -> GameState -> GameState
-move (Just direction) (GameState beforeLocation beforeMap) = GameState afterLocation afterMap
+move (Just direction) (Level beforeLocation beforeMap) = afterState
     where targetLocation = findTargetLocation direction beforeLocation
           targetTile = getTile targetLocation beforeMap
+          afterState = if targetTile == Exit then Win else Level afterLocation afterMap
           afterLocation = case targetTile of 
             Floor -> targetLocation
             Boulder -> if boulderTargetTile == Floor || boulderTargetTile == Hole then targetLocation else beforeLocation
@@ -126,7 +131,7 @@ move (Just direction) (GameState beforeLocation beforeMap) = GameState afterLoca
                       boulderTargetTile = getTile boulderTarget beforeMap
             _ -> beforeLocation 
           afterMap = if targetTile /= Boulder then beforeMap else moveBoulder direction targetLocation beforeMap
-move Nothing gameState = gameState
+move _ gameState = gameState
 
 
 moveBoulder :: Direction -> Location -> GameMap -> GameMap
